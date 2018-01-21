@@ -1,8 +1,13 @@
 # aws-lambda-unzip
+
 **Unzip function for AWS Lambda**
 
-This function unzip the archive file and upload extracted files in the same location. After that delete the archive file from S3.
+The function extracts zip files and uploads files to the same S3 location. It should be waiting for S3 upload event.
 
-### License
+## Requirements
+
+- Python 3.6
+
+## License
 
 See [LICENSE](LICENSE)

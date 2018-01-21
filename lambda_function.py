@@ -1,33 +1,57 @@
-from __future__ import print_function
-
-import boto3
 import os
-import urllib
+import tempfile
 import zipfile
 
-print('Loading function')
+from concurrent import futures
+from io import BytesIO
+
+import boto3
 
 s3 = boto3.client('s3')
 
 
 def lambda_handler(event, context):
-    bucket = event['Records'][0]['s3']['bucket']['name']
-    url = event['Records'][0]['s3']['object']['key'].encode('utf8')
-    key = urllib.unquote_plus(url)
-    s3_path = os.path.dirname(key)
+    # Parse and prepare required items from event
+    global bucket, path, zipdata
+    event = next(iter(event['Records']))
+    bucket = event['s3']['bucket']['name']
+    key = event['s3']['object']['key']
+    path = os.path.dirname(key)
+
+    # Create temporary file
+    temp_file = tempfile.mktemp()
+
+    # Fetch and load target file
+    s3.download_file(bucket, key, temp_file)
+    zipdata = zipfile.ZipFile(temp_file)
+
+    # Call action method with using ThreadPool
+    with futures.ThreadPoolExecutor(max_workers=4) as executor:
+        future_list = [
+            executor.submit(extract, filename)
+            for filename in zipdata.namelist()
+        ]
+
+    result = {'success': [], 'fail': []}
+    for future in future_list:
+        filename, status = future.result()
+        result[status].append(filename)
+
+    # Remove extracted archive file
+    s3.delete_object(Bucket=bucket, Key=key)
+
+    return result
+
+
+def extract(filename):
+    upload_status = 'success'
     try:
-        s3.download_file(bucket, key, '/tmp/target.zip')
-        zfile = zipfile.ZipFile('/tmp/target.zip')
-        namelist = zfile.namelist()
-        for filename in namelist:
-            data = zfile.read(filename)
-            localpath = '/tmp/{}'.format(str(filename))
-            f = open(localpath, 'wb')
-            f.write(data)
-            f.close()
-            s3.upload_file(localpath, bucket, os.path.join(s3_path, filename))
-        s3.delete_object(Bucket=bucket, Key=key)
-        return "AWS Key -> {}".format(key)
-    except Exception as e:
-        print(e)
-        raise e
+        s3.upload_fileobj(
+            BytesIO(zipdata.read(filename)),
+            bucket,
+            os.path.join(path, filename)
+        )
+    except Exception:
+        upload_status = 'fail'
+    finally:
+        return filename, upload_status
