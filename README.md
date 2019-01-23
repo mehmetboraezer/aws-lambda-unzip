@@ -27,3 +27,12 @@ You need to give following permissions:
 ## License
 
 See [LICENSE](LICENSE)
+
+## Configuring AWS Lambda via Terraform script
+
+In order to automatically configure lambda, check `terraform.tfvars` and run the following command:
+
+```bash
+zip unzip_lambda.zip -xi unzip_lambda.py
+terraform apply
+```
